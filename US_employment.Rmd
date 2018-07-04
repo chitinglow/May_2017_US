@@ -1,0 +1,168 @@
+---
+title: "May 2017 National Occupational Employment and Wage Estimates United States"
+date: "7/3/2018"
+output: pdf_document
+fig_width: 15 
+fig_height: 20 
+---
+
+```{r, message=FALSE, warning=FALSE}
+library(scales)
+library(readxl)
+library(Amelia)
+library(psych)
+library(knitr)
+library(ggplot2)
+library(ggalluvial)
+
+#loading file
+M2017 <- read_excel('national_M2017_dl.xlsx')
+
+#file structure
+kable(describe(M2017))
+```
+
+Before the analysis, I categorized all the occupation using https://www.cityofmadison.com/dcr/documents/EEO-1JobCat.pdf to categorize the occupation into relevant category. 
+
+```{r,message=FALSE, warning=FALSE}
+#checking missing values
+missmap(M2017)
+```
+
+Due to large amount of missing value in "HOURLY" and "ANNUAL" columns, it is suggested that to remove these two columns.
+
+```{r, message=FALSE, warning=FALSE}
+# using mean 
+M2017_1 <- M2017[,c(2,3,4,5,7,8)]
+
+#remove 1st row
+M2017_1 <- M2017_1[-1,]
+
+
+#convert into relevant data type
+M2017_1$OCC_TITLE <- as.character(M2017_1$OCC_TITLE)
+M2017_1$OCC_GROUP <- as.factor(M2017_1$OCC_GROUP)
+M2017_1$CATEGORY <- as.factor(M2017_1$CATEGORY)
+M2017_1$TOT_EMP <- as.numeric(M2017_1$TOT_EMP)
+M2017_1$H_MEAN <- as.numeric(M2017_1$H_MEAN)
+M2017_1$A_MEAN <- as.numeric(M2017_1$A_MEAN)
+
+#remove missing value
+M2017_1.na <- na.omit(M2017_1)
+
+#total employment by group
+ggplot(M2017_1.na, aes(x = OCC_GROUP, y = TOT_EMP, fill = OCC_GROUP)) + 
+  geom_bar(stat = 'identity') +
+  scale_y_continuous(limits = c(-0,30000000), labels = comma) +
+  labs(title = "Total Employment by Occupation Group", x = 'Occupation Group', y = "Total Employment") +
+  guides(fill = guide_legend(title = "Occupation Group"))
+```
+
+
+```{r,  message=FALSE, warning=FALSE}
+#total employment by category
+ggplot(M2017_1.na, aes(x = CATEGORY, y = TOT_EMP, fill = CATEGORY)) + 
+  geom_bar(stat = 'identity') +
+  scale_y_continuous(limits = c(-0,30000000), labels = comma) +
+  labs(title = "Total Employment by Occupation Category", x = 'Occupation Category', y = "Total Employment") +
+  guides(fill = guide_legend(title = "Occupation Category")) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+
+```{r}
+#hourly wage
+summary(M2017_1.na$H_MEAN)
+
+M2017_1.na$Hour_wage <- cut(M2017_1.na$H_MEAN,
+                         breaks = c(-Inf, 10.21, 27.74, Inf),
+                         labels = c("low", "medium", "high"))
+
+#annual income
+M2017_1.na$Income <- cut(M2017_1.na$A_MEAN,
+                         breaks = c(-Inf, 49999, 99999, Inf),
+                         labels = c("low", "medium", "high"))
+
+```
+
+Due to lack of information for the hourly wage in USA, I decided to use the mean instead. I categorized 10.21 as low hourly wages, > 27.74 <= as medium hourly wage, and anything above that is consider as high. To categorize the annual income, I used [Middle Class, Income Are You in the Middle Class?](https://www.thebalance.com/definition-of-middle-class-income-4126870) published by the website the balance https://www.thebalance.com/definition-of-middle-class-income-4126870. 
+
+```{r}
+#catgorize the data
+df <- table(M2017_1.na$OCC_GROUP, M2017_1.na$Hour_wage)
+df1 <- table(M2017_1.na$OCC_GROUP, M2017_1.na$Income)
+df2 <- table(M2017_1.na$CATEGORY, M2017_1.na$Hour_wage)
+df3 <-  table(M2017_1.na$CATEGORY, M2017_1.na$Income)
+
+df <- as.data.frame(df)
+df1 <- as.data.frame(df1)
+df2 <- as.data.frame(df2)
+df3 <- as.data.frame(df3)
+
+colnames(df) <- c("Group", "Wage (per Hour)", "Freq")
+colnames(df1) <- c("Category", "Income (Annual)", "Freq")
+colnames(df2) <- c("Group", "Wage (per Hour)", "Freq")
+colnames(df3) <- c("Category", "Income (Annual)", "Freq")
+
+#plot
+ggplot(df, aes(x = Group, y = Freq, fill = `Wage (per Hour)`)) +
+  geom_bar(stat = "identity", position = 'dodge') +
+  labs(title = "Occupation Group by Hourly wage", x = 'Occupation Group', y = "Frequency") 
+```
+
+
+```{r}
+ggplot(df1, aes(x = Category, y = Freq, fill = `Income (Annual)`)) +
+  geom_bar(stat = "identity", position = 'dodge') +
+  labs(title = "Occupation Group by Annualy Income", x = 'Occupation Group', y = "Frequency") 
+```
+
+
+```{r}
+ggplot(df2, aes(x = Group, y = Freq, fill = `Wage (per Hour)`)) +
+  geom_bar(stat = "identity", position = 'dodge') +
+  labs(title = "Occupation Category by Hourly Wage", x = 'Occupation Category', y = "Frequency") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+ggplot(df3, aes(x = Category, y = Freq, fill = `Income (Annual)`)) +
+  geom_bar(stat = "identity", position = 'dodge') +
+  labs(title = "Occupation Category by Annualy Income", x = 'Occupation Category', y = "Frequency") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r, fig.width=10, fig.height=8}
+#sankey diagram for Wage per hour
+df4 <- table(M2017_1.na$OCC_GROUP, M2017_1.na$CATEGORY, M2017_1.na$Hour_wage)
+df4 <- as.data.frame(df4)
+colnames(df4) <- c("Group", "Category", "Wage (per Hour)", "Freq")
+
+ggplot(df4,
+       aes(weight = Freq, axis1 = Group, axis2 = Category, axis3 = `Wage (per Hour)`)) +
+  geom_alluvium(aes(fill = `Wage (per Hour)`), width = 1/12) +
+  geom_stratum(width = 1/12, fill = "green", color = "black") +
+  geom_label(stat = "stratum", label.strata = TRUE) +
+  scale_x_continuous(breaks = 1:3, labels = c("Group", "Category", "Wage (per Hour)")) +
+  scale_fill_brewer(type = "qual", palette = "Set1") +
+  ggtitle("Wage Per Hour by Occupation May 2017 (USA)") +
+  theme_bw()
+```
+
+```{r, fig.width=10, fig.height=8}
+#sankey diagram for annual income
+df5 <- table(M2017_1.na$OCC_GROUP, M2017_1.na$CATEGORY, M2017_1.na$Income)
+df5 <- as.data.frame(df5)
+colnames(df5) <- c("Group", "Category", "Income (Annual)", "Freq")
+
+ggplot(df5,
+       aes(weight = Freq, axis1 = Group, axis2 = Category, axis3 = `Income (Annual)`)) +
+  geom_alluvium(aes(fill = `Income (Annual)`), width = 1/12) +
+  geom_stratum(width = 1/12, fill = "green", color = "black") +
+  geom_label(stat = "stratum", label.strata = TRUE) +
+  scale_x_continuous(breaks = 1:3, labels = c("Group", "Category", "Income (Annual)")) +
+  scale_fill_brewer(type = "qual", palette = "Set1") +
+  ggtitle("Annual Income by Occupation May 2017 (USA)") +
+  theme_bw()
+```
+
